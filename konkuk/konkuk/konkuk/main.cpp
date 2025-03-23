@@ -17,7 +17,7 @@
 #include <glm/gtx/string_cast.hpp>
 
 using namespace glm;
-class Scene;
+
 // -------------------------------------------------
 // Global Variables
 // -------------------------------------------------
@@ -58,7 +58,6 @@ public:
     virtual ~Surface() = default;
     virtual bool intersect(const Ray& ray, float& t) const = 0;
     virtual vec3 getColor() const = 0;
-    virtual vec3 getNormal(const vec3& P) const = 0;
 };
 
 class Plane : public Surface {
@@ -76,11 +75,6 @@ public:
 
     vec3 getColor() const override {
         return color;
-    }
-
-    vec3 getNormal(const vec3& /*P*/) const override {
-        // 평면의 법선은 일정 (여기서는 위쪽 방향)
-        return vec3(0.0f, 1.0f, 0.0f);
     }
 };
 
@@ -103,55 +97,14 @@ public:
         }
         else {
             t = (-b - sqrtf(discriminant)) / (2.0f * a);
-            return t >= 0;
+            return true;
         }
-
-
     }
 
     vec3 getColor() const override {
         return color;
     }
-
-    vec3 getNormal(const vec3& P) const override {
-        return normalize(P - center);
-    }
-
 };
-
-struct Light {
-    vec3 position;
-    vec3 intensity; 
-};
-
-Light sceneLight = { vec3(0.0f, 5.0f, -5.0f), vec3(1.0f, 1.0f, 1.0f) };
-
-
-vec3 phongShading(const vec3& P, const vec3& N, const vec3& V, const vec3& objectColor) {
-    
-    float ka = 0.1f;        
-    float kd = 0.7f;       
-    float ks = 0.2f;        
-    float shininess = 16.0f;
-
-    vec3 L = normalize(sceneLight.position - P);
-    vec3 ambient = ka * sceneLight.intensity;
-    float diff = max(dot(N, L), 0.0f);
-    vec3 diffuse = kd * diff * sceneLight.intensity;
-    vec3 R = reflect(-L, N);
-    float spec = pow(max(dot(V, R), 0.0f), shininess);
-    vec3 specular = ks * spec * sceneLight.intensity;
-    vec3 color = (ambient + diffuse + specular) * objectColor;
-    return clamp(color, 0.0f, 1.0f);
-}
-
-
-
-struct HitRecord {
-    Surface* object;
-    float t;
-};
-
 
 class Scene {
 public:
@@ -167,51 +120,34 @@ public:
         objects.push_back(object);
     }
 
-
-};
-
-bool intersectScene(const Scene& scene, const Ray& ray, HitRecord& hitRec) {
-    float t_min = std::numeric_limits<float>::max();
-    bool hit = false;
-    hitRec.object = nullptr;
-    for (const auto& object : scene.objects) {
-        float t;
-        if (object->intersect(ray, t) && t < t_min) {
-            t_min = t;
-            hitRec.object = object;
-            hit = true;
+    bool intersect(const Ray& ray, vec3& color) const {
+        float t_min = std::numeric_limits<float>::max();
+        bool hit = false;
+        for (const auto& object : objects) {
+            float t;
+            if (object->intersect(ray, t) && t < t_min) {
+                t_min = t;
+                color = object->getColor();
+                hit = true;
+            }
         }
+        return hit;
     }
-    hitRec.t = t_min;
-    return hit;
-}
-
-
-
-
+};
 
 void render(const Camera& camera, const Scene& scene) {
     OutputImage.clear();
-    OutputImage.resize(Width * Height * 3);
-
-
     for (int j = Height - 1; j >= 0; --j) {
         for (int i = 0; i < Width; ++i) {
             Ray ray = camera.generateRay(i, j);
-            vec3 pixelColor(0.0f); 
-            HitRecord hitRec;
-            if (intersectScene(scene, ray, hitRec) && hitRec.object) {
-                float t = hitRec.t;
-                vec3 P = ray.origin + t * ray.direction; 
-                vec3 N = hitRec.object->getNormal(P);      
-                vec3 V = normalize(camera.eye - P);     
-                vec3 objectColor = hitRec.object->getColor(); 
-                pixelColor = phongShading(P, N, V, objectColor);
+            vec3 color = vec3(0.0f, 0.0f, 0.0f); 
+
+            if (scene.intersect(ray, color)) {
+                color = vec3(1.0f, 1.0f, 1.0f); 
             }
-            int index = ((Height - 1 - j) * Width + i) * 3;
-            OutputImage[index + 0] = pixelColor.x;
-            OutputImage[index + 1] = pixelColor.y;
-            OutputImage[index + 2] = pixelColor.z;
+            OutputImage.push_back(color.x); // R
+            OutputImage.push_back(color.y); // G
+            OutputImage.push_back(color.z); // B
         }
     }
 }
@@ -229,14 +165,13 @@ int main(int argc, char* argv[]) {
     if (!glfwInit())
         return -1;
     window = glfwCreateWindow(Width, Height, "OpenGL Viewer", NULL, NULL);
-
     if (!window) {
         glfwTerminate();
         return -1;
     }
     glfwMakeContextCurrent(window);
 
-    
+    // GLEW 초기화 추가
     if (glewInit() != GLEW_OK) {
         std::cerr << "Failed to initialize GLEW" << std::endl;
         return -1;
@@ -255,10 +190,10 @@ int main(int argc, char* argv[]) {
     Camera camera(eye, u, v, w, l, r, b, t, d, nx, ny);
 
     Scene scene;
-    //scene.addObject(new Plane(-2.0f, vec3(0.0f, 1.0f, 0.0f))); // Green plane
-    scene.addObject(new Sphere(vec3(-4.0f, 0.0f, -7.0f), 1.0f, vec3(1.0f, 0.0f, 0.0f))); // Red sphere
-    scene.addObject(new Sphere(vec3(0.0f, 0.0f, -7.0f), 2.0f, vec3(0.0f, 0.0f, 1.0f))); // Blue sphere
-    scene.addObject(new Sphere(vec3(4.0f, 0.0f, -7.0f), 1.0f, vec3(1.0f, 1.0f, 0.0f))); // Yellow sphere
+    //scene.addObject(new Plane(-2.0f, vec3(0.0f, 1.0f, 0.0f))); 
+    scene.addObject(new Sphere(vec3(-4.0f, 0.0f, -7.0f), 1.0f, vec3(1.0f, 0.0f, 0.0f))); 
+    scene.addObject(new Sphere(vec3(0.0f, 0.0f, -7.0f), 2.0f, vec3(0.0f, 0.0f, 1.0f))); 
+    scene.addObject(new Sphere(vec3(4.0f, 0.0f, -7.0f), 1.0f, vec3(1.0f, 1.0f, 0.0f))); 
 
     render(camera, scene);
 
