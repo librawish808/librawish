@@ -29,3 +29,8 @@ I did not modify the resize callback function.
 In main(), the camera is positioned at the origin with the standard basis vectors for u, v, and w. I added three spheres to the scene, each with defined center coordinates, radius, and color.
 
 I set up a plane with the equation y = -2 as required, but since it made half the output image white, I commented it out.
+
+![화면 캡처 2025-03-23 170504](https://github.com/user-attachments/assets/70ed41ed-2cee-44e3-80fa-26eee3ca809d)
+
+
+
